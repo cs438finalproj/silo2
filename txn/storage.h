@@ -30,6 +30,8 @@ class Storage {
   // Note that the third parameter is only used for MVCC, the default vaule is 0.
   virtual void Write(Key key, Value value, int txn_unique_id = 0);
 
+  uint64 *GetTid(Key key);
+
   // Returns the timestamp at which the record with the specified key was last
   // updated (returns 0 if the record has never been updated). This is used for OCC.
   virtual double Timestamp(Key key);

@@ -101,6 +101,22 @@ class TxnProcessor {
   void MVCCLockWriteKeys(Txn* txn);
 
   void MVCCUnlockWriteKeys(Txn* txn);
+
+  void RunSiloScheduler();
+
+  void EpochManager();
+
+  void ExecuteTxnSilo(Txn *txn);
+
+  void ApplySiloWrites(Txn* txn, uint64 tid);
+
+  uint64 UnlockedTid(uint64 tid);
+
+  bool IsLocked(uint64 tid);
+
+  void SiloLock(Key key);
+
+  void Abort(Txn *txn);
   
   void GarbageCollection();
   
@@ -142,6 +158,8 @@ class TxnProcessor {
 
   // Lock Manager used for LOCKING concurrency implementations.
   LockManager* lm_;
+
+  uint64 E;
 };
 
 #endif  // _TXN_PROCESSOR_H_

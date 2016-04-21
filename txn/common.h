@@ -42,7 +42,10 @@ typedef uint64_t uint64;
 
 // Key and value types
 typedef uint64 Key;
-typedef uint64 Value;
+typedef struct value {
+  uint64 val;
+  uint64 tid;
+} Value;
 
 // Returns the number of seconds since midnight according to local system time,
 // to the nearest microsecond.

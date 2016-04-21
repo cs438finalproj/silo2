@@ -79,8 +79,8 @@ void Benchmark(const vector<LoadGen*>& lg) {
   deque<Txn*> doneTxns;
 
   // For each MODE...
-  for (CCMode mode = SERIAL;
-      mode <= MVCC;
+  for (CCMode mode = OCC;
+      mode <= OCC;
       mode = static_cast<CCMode>(mode+1)) {
     // Print out mode name.
     cout << ModeToString(mode) << flush;
@@ -92,6 +92,9 @@ void Benchmark(const vector<LoadGen*>& lg) {
 
         int txn_count = 0;
 
+        //MINE
+        int txn_sent = 0;
+
         // Create TxnProcessor in next mode.
         TxnProcessor* p = new TxnProcessor(mode);
 
@@ -99,8 +102,11 @@ void Benchmark(const vector<LoadGen*>& lg) {
         double start = GetTime();
 
         // Start specified number of txns running.
-        for (int i = 0; i < active_txns; i++)
+        for (int i = 0; i < active_txns; i++) {
           p->NewTxnRequest(lg[exp]->NewTxn());
+          txn_sent++;
+        }
+          
 
         // Keep 100 active txns at all times for the first full second.
         while (GetTime() < start + 1) {
@@ -108,6 +114,7 @@ void Benchmark(const vector<LoadGen*>& lg) {
           doneTxns.push_back(txn);
           txn_count++;
           p->NewTxnRequest(lg[exp]->NewTxn());
+          txn_sent++;
         }
 
         // Wait for all of them to finish.
@@ -115,6 +122,7 @@ void Benchmark(const vector<LoadGen*>& lg) {
           Txn* txn = p->GetTxnResult();
           doneTxns.push_back(txn);
           txn_count++;
+          printf("Recieved %i results out of %i requests sent\n", txn_count, txn_sent);
         }
 
         // Record end time.

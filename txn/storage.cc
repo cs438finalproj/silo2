@@ -27,6 +27,11 @@ double Storage::Timestamp(Key key) {
 // Init the storage
 void Storage::InitStorage() {
   for (int i = 0; i < 1000000;i++) {
-    Write(i, 0, 0);
+    Value val = {0,0};
+    Write(i, val, 0);
   } 
+}
+
+uint64 *Storage::GetTid(Key key) {
+  return &(data_[key].tid);
 }
