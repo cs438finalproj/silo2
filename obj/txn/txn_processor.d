@@ -128,4 +128,14 @@ obj/txn/txn_processor.o: txn/txn_processor.cc /usr/include/stdc-predef.h \
  /usr/include/c++/4.8.2/bits/stl_heap.h \
  /usr/include/c++/4.8.2/bits/stl_queue.h utils/static_thread_pool.h \
  utils/thread_pool.h utils/task.h /usr/include/c++/4.8.2/cassert \
- /usr/include/c++/4.8.2/typeinfo utils/condition.h txn/util.h
+ /usr/include/c++/4.8.2/typeinfo utils/condition.h txn/util.h \
+ /usr/include/c++/4.8.2/thread /usr/include/c++/4.8.2/chrono \
+ /usr/include/c++/4.8.2/ratio /usr/include/c++/4.8.2/limits \
+ /usr/include/c++/4.8.2/ctime /usr/include/c++/4.8.2/functional \
+ /usr/include/c++/4.8.2/memory /usr/include/c++/4.8.2/bits/stl_tempbuf.h \
+ /usr/include/c++/4.8.2/bits/stl_raw_storage_iter.h \
+ /usr/include/c++/4.8.2/ext/concurrence.h \
+ /usr/include/c++/4.8.2/bits/unique_ptr.h \
+ /usr/include/c++/4.8.2/bits/shared_ptr.h \
+ /usr/include/c++/4.8.2/bits/shared_ptr_base.h \
+ /usr/include/c++/4.8.2/backward/auto_ptr.h

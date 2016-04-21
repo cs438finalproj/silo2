@@ -9,9 +9,10 @@
 
 #include "txn/lock_manager.h"
 #include "txn/util.h"
+#include <thread>
 
 // Thread & queue counts for StaticThreadPool initialization.
-#define THREAD_COUNT 8
+#define THREAD_COUNT 6
 
 int push = 0;
 int reqs = 0;
@@ -19,8 +20,9 @@ int execute = 0;
 int tasksrun = 0;
 
 TxnProcessor::TxnProcessor(CCMode mode)
-    : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1) {
+    : mode_(mode), tp_(THREAD_COUNT), epoch_tp_(1), next_unique_id_(1) {
   E = 0;
+  benchmark_complete = false;
   if (mode_ == LOCKING_EXCLUSIVE_ONLY)
     lm_ = new LockManagerA(&ready_txns_);
   else if (mode_ == LOCKING)
@@ -68,22 +70,19 @@ TxnProcessor::~TxnProcessor() {
 void TxnProcessor::NewTxnRequest(Txn* txn) {
   // Atomically assign the txn a new number and add it to the incoming txn
   // requests queue.
-  mutex_.Lock();
-  txn->unique_id_ = next_unique_id_;
-  next_unique_id_++;
+  // ^^ no need for Silo ^^
   txn_requests_.Push(txn);
-  mutex_.Unlock();
 }
 
 Txn* TxnProcessor::GetTxnResult() {
   Txn* txn;
-  printf("Waiting...\n");
+  // printf("Waiting...\n");
   while (!txn_results_.Pop(&txn)) {
     // No result yet. Wait a bit before trying again (to reduce contention on
     // atomic queues).
     sleep(0.000001);
   }
-  printf("RESULT!\n");
+  // printf("RESULT!\n");
   return txn;
 }
 
@@ -310,41 +309,54 @@ void TxnProcessor::RunMVCCScheduler() {
 void TxnProcessor::RunSiloScheduler() {
   Txn *txn;
 
-  printf("Silo Scheduler\n");
+  //// printf("Silo Scheduler\n");
 
-  tp_.RunTask(new Method <TxnProcessor, void>(
+  epoch_tp_.RunTask(new Method <TxnProcessor, void>(
     this,
     &TxnProcessor::EpochManager));
 
   while (tp_.Active()) {
     if (txn_requests_.Pop(&txn)) {
-      printf("Requests recieved: %i\n", ++reqs);
+      // printf("Requests recieved: %i\n", ++reqs);
       tp_.RunTask(new Method <TxnProcessor, void, Txn*>(
         this,
         &TxnProcessor::ExecuteTxnSilo,
         txn)); 
-      printf("Tasks run: %i\n", ++tasksrun);
+      // printf("Tasks run: %i\n", ++tasksrun);
     }
   }
-  printf("THREAD POOL INACTIVE\n");
+  // // printf("THREAD POOL INACTIVE\n");
 }
 
 void TxnProcessor::EpochManager() {
-  printf("Epoch manager\n");
+  // // printf("Epoch manager\n");
   while(true) {
-    sleep(4);
-    printf("EPOCH\n");
+    sleep(.004);
+
+    if (benchmark_complete) {
+      return;
+    }
+
+    // // printf("EPOCH\n");
+
     ++E;
+
+    /*
     Txn *txn;
     while(completed_txns_.Pop(&txn)) {
-      // printf("popped\n");
+      // // printf("popped\n");
       txn_results_.Push(txn);
     }
+    */
   }
 }
 
+void TxnProcessor::Finish() {
+  benchmark_complete = true;
+}
+
 void TxnProcessor::ExecuteTxnSilo(Txn *txn) {
-  printf("Execute %i\n", ++execute);
+  // printf("Execute %i\n", ++execute);
   thread_local static uint64 e;
   thread_local static uint64 workerMaxTid; //CHECK does this need to be initialized?
   uint64 maxSeenTid = 0;
@@ -432,15 +444,16 @@ void TxnProcessor::ExecuteTxnSilo(Txn *txn) {
   ApplySiloWrites(txn, newTid);
   txn->status_ = COMMITTED;
 
-  printf("PUSHED %i\n", ++push);
-  completed_txns_.Push(txn);
+  // printf("PUSHED %i\n", ++push);
+  //completed_txns_.Push(txn);
+  txn_results_.Push(txn);
 }
 
 void TxnProcessor::ApplySiloWrites(Txn* txn, uint64 tid) {
   // Write buffered writes out to storage.
   for (map<Key, Value>::iterator it = txn->writes_.begin();
        it != txn->writes_.end(); ++it) {
-    storage_->Write(it->first, it->second, txn->unique_id_);
+    storage_->Write(it->first, it->second, 1);
 
     //Perform memory fence then store TID + release lock
     barrier();
@@ -467,7 +480,10 @@ void TxnProcessor::SiloLock(Key key) {
   while (!cmp_and_swap(tidptr, UnlockedTid(curVal), curVal | 1)) {
     do_pause();
     curVal = *tidptr;
-    printf("DEADLOCK\n");
+    // printf("DEADLOCK on thread %zu\n", std::hash<std::thread::id>()(std::this_thread::get_id()));
+    // printf("Waiting for key %lu\n\n", key);
+
+    // sleep(5);
   }
 }
 
@@ -476,10 +492,13 @@ void TxnProcessor::Abort(Txn *txn) {
   txn->reads_.clear();
   txn->writes_.clear();
 
-  mutex_.Lock();
-  txn->unique_id_ = next_unique_id_;
-  next_unique_id_++;
+  // Unlock writeset
+  for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it) {
+    uint64 *tid = storage_->GetTid(*it);
+    uint64 new_tid = UnlockedTid(*tid);
+    (*tid) = new_tid;
+  }
+
   txn_requests_.Push(txn);
-  mutex_.Unlock();
 }
 

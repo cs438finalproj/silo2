@@ -122,8 +122,12 @@ void Benchmark(const vector<LoadGen*>& lg) {
           Txn* txn = p->GetTxnResult();
           doneTxns.push_back(txn);
           txn_count++;
-          printf("Recieved %i results out of %i requests sent\n", txn_count, txn_sent);
+          // printf("Recieved %i results out of %i requests sent\n", txn_count, txn_sent);
+          // printf("active_txns = %i", active_txns);
         }
+
+        // printf("Ending benchmark");
+        p->Finish();
 
         // Record end time.
         double end = GetTime();
@@ -158,6 +162,7 @@ int main(int argc, char** argv) {
 
   vector<LoadGen*> lg;
 
+  /* Commenting out to debug mixed read-only/read-write TODO: uncomment this block
   cout << "'Low contention' Read only (5 records)" << endl;
   lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.0001));
   lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.001));
@@ -256,6 +261,7 @@ int main(int argc, char** argv) {
   for (uint32 i = 0; i < lg.size(); i++)
     delete lg[i];
   lg.clear();
+  */
   
   // 80% of transactions are READ only transactions and run for the full
   // transaction duration. The rest are very fast (< 0.1ms), high-contention

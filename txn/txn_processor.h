@@ -60,6 +60,9 @@ class TxnProcessor {
   void RunScheduler();
   
   static void* StartScheduler(void * arg);
+
+  // For Silo implementation: flips flag to let epoch thread know it should terminate
+  void Finish();
   
  private:
 
@@ -125,6 +128,11 @@ class TxnProcessor {
 
   // Thread pool managing all threads used by TxnProcessor.
   StaticThreadPool tp_;
+
+  StaticThreadPool epoch_tp_;
+
+  // Signal to epoch thread that it can terminate
+  bool benchmark_complete;
 
   // Data storage used for all modes.
   Storage* storage_;
