@@ -52,6 +52,8 @@ class TxnProcessor {
   // Ownership of '*txn' is transfered to the TxnProcessor.
   void NewTxnRequest(Txn* txn);
 
+  void AddThreadTask(Txn *txn);
+
   // Returns a pointer to the next COMMITTED or ABORTED Txn. The caller takes
   // ownership of the returned Txn.
   Txn* GetTxnResult();
@@ -61,8 +63,20 @@ class TxnProcessor {
   
   static void* StartScheduler(void * arg);
 
+  static void *StartEpochManager(void *arg);
+
   // For Silo implementation: flips flag to let epoch thread know it should terminate
   void Finish();
+
+  void Start();
+
+  int THREAD_COUNT;
+
+  int threads_done;
+  Mutex threads_done_mutex;
+
+  uint64 global_txn_count;
+  Mutex txn_count_mutex;
   
  private:
 
@@ -121,7 +135,7 @@ class TxnProcessor {
 
   void Abort(Txn *txn);
   
-  void GarbageCollection();
+  void OnSuccess(Txn *txn);
   
   // Concurrency control mechanism the TxnProcessor is currently using.
   CCMode mode_;
@@ -132,7 +146,8 @@ class TxnProcessor {
   StaticThreadPool epoch_tp_;
 
   // Signal to epoch thread that it can terminate
-  bool benchmark_complete;
+  bool benchmark_complete = false;
+  bool benchmark_started = false;
 
   // Data storage used for all modes.
   Storage* storage_;
@@ -143,6 +158,8 @@ class TxnProcessor {
 
   // Queue of incoming transaction requests.
   AtomicQueue<Txn*> txn_requests_;
+
+
 
   // Queue of txns that have acquired all locks and are ready to be executed.
   //

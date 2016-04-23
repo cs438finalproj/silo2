@@ -12,7 +12,8 @@
 #include <thread>
 
 // Thread & queue counts for StaticThreadPool initialization.
-#define THREAD_COUNT 6
+#define THREAD_COUNT_ 6
+int THREAD_COUNT;
 
 int push = 0;
 int reqs = 0;
@@ -20,9 +21,13 @@ int execute = 0;
 int tasksrun = 0;
 
 TxnProcessor::TxnProcessor(CCMode mode)
-    : mode_(mode), tp_(THREAD_COUNT), epoch_tp_(1), next_unique_id_(1) {
+    : mode_(mode), tp_(THREAD_COUNT_), epoch_tp_(1), next_unique_id_(1) {
   E = 0;
   benchmark_complete = false;
+  THREAD_COUNT = THREAD_COUNT_;
+  threads_done = 0;
+  global_txn_count = 0;
+
   if (mode_ == LOCKING_EXCLUSIVE_ONLY)
     lm_ = new LockManagerA(&ready_txns_);
   else if (mode_ == LOCKING)
@@ -50,9 +55,17 @@ TxnProcessor::TxnProcessor(CCMode mode)
   CPU_SET(5, &cpuset);
   CPU_SET(6, &cpuset);  
   pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpuset);
-  pthread_t scheduler_;
-  pthread_create(&scheduler_, &attr, StartScheduler, reinterpret_cast<void*>(this));
+  // pthread_t scheduler_;
+  // pthread_create(&scheduler_, &attr, StartScheduler, reinterpret_cast<void*>(this));
+
+  pthread_t epoch_thread_;
+  pthread_create(&epoch_thread_, &attr, StartEpochManager, reinterpret_cast<void*>(this));
   
+}
+
+void *TxnProcessor::StartEpochManager(void *arg) {
+  reinterpret_cast<TxnProcessor *>(arg)->EpochManager();
+  return NULL;
 }
 
 void* TxnProcessor::StartScheduler(void * arg) {
@@ -306,15 +319,23 @@ void TxnProcessor::RunMVCCScheduler() {
   RunSerialScheduler();
 }
 
+void TxnProcessor::AddThreadTask(Txn *txn) {
+  tp_.RunTask(new Method <TxnProcessor, void, Txn*>(
+        this,
+        &TxnProcessor::ExecuteTxnSilo,
+        txn));
+}
+
 void TxnProcessor::RunSiloScheduler() {
-  Txn *txn;
+  // Txn *txn;
 
   //// printf("Silo Scheduler\n");
 
-  epoch_tp_.RunTask(new Method <TxnProcessor, void>(
-    this,
-    &TxnProcessor::EpochManager));
+  // epoch_tp_.RunTask(new Method <TxnProcessor, void>(
+  //   this,
+  //   &TxnProcessor::EpochManager));
 
+  /*
   while (tp_.Active()) {
     if (txn_requests_.Pop(&txn)) {
       // printf("Requests recieved: %i\n", ++reqs);
@@ -325,6 +346,7 @@ void TxnProcessor::RunSiloScheduler() {
       // printf("Tasks run: %i\n", ++tasksrun);
     }
   }
+  */
   // // printf("THREAD POOL INACTIVE\n");
 }
 
@@ -334,7 +356,10 @@ void TxnProcessor::EpochManager() {
     sleep(.004);
 
     if (benchmark_complete) {
-      return;
+
+      // printf("Epochs done\n");
+
+      break;
     }
 
     // // printf("EPOCH\n");
@@ -351,15 +376,42 @@ void TxnProcessor::EpochManager() {
   }
 }
 
+void TxnProcessor::Start() {
+  benchmark_started = true;
+}
+
 void TxnProcessor::Finish() {
   benchmark_complete = true;
 }
 
+
 void TxnProcessor::ExecuteTxnSilo(Txn *txn) {
   // printf("Execute %i\n", ++execute);
+
+  thread_local static uint64 txn_count;
+
   thread_local static uint64 e;
-  thread_local static uint64 workerMaxTid; //CHECK does this need to be initialized?
+  thread_local static uint64 workerMaxTid;
   uint64 maxSeenTid = 0;
+
+  if (benchmark_complete) {
+    if (txn_count != 0) {
+
+      // printf("thread %zu completed, incrementing threads_done and txn_count\n", std::hash<std::thread::id>()(std::this_thread::get_id()));
+
+      threads_done_mutex.Lock();
+      ++threads_done;
+      threads_done_mutex.Unlock();
+
+      // printf("incremented threads_done.  threads_done = %i\n", threads_done);
+
+      txn_count_mutex.Lock();
+      global_txn_count += txn_count;
+      txn_count = 0;
+      txn_count_mutex.Unlock();
+    }
+    return;
+  }
 
   // Read everything in readset
   for (set<Key>::iterator it = txn->readset_.begin(); 
@@ -446,7 +498,11 @@ void TxnProcessor::ExecuteTxnSilo(Txn *txn) {
 
   // printf("PUSHED %i\n", ++push);
   //completed_txns_.Push(txn);
-  txn_results_.Push(txn);
+  if (benchmark_started) {
+    ++txn_count;
+  }
+  OnSuccess(txn);
+  // txn_results_.Push(txn);
 }
 
 void TxnProcessor::ApplySiloWrites(Txn* txn, uint64 tid) {
@@ -499,6 +555,12 @@ void TxnProcessor::Abort(Txn *txn) {
     (*tid) = new_tid;
   }
 
-  txn_requests_.Push(txn);
+  // txn_requests_.Push(txn);
 }
 
+// Reset txn so it can be recycle by this thread
+void TxnProcessor::OnSuccess(Txn *txn) {
+  txn->status_ = INCOMPLETE;
+  txn->reads_.clear();
+  txn->writes_.clear();
+}

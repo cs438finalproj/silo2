@@ -74,9 +74,7 @@ class RMWLoadGen2 : public LoadGen {
 };
 
 void Benchmark(const vector<LoadGen*>& lg) {
-  // Number of transaction requests that can be active at any given time.
-  int active_txns = 100;
-  deque<Txn*> doneTxns;
+  // deque<Txn*> doneTxns;
 
   // For each MODE...
   for (CCMode mode = OCC;
@@ -93,48 +91,70 @@ void Benchmark(const vector<LoadGen*>& lg) {
         int txn_count = 0;
 
         //MINE
-        int txn_sent = 0;
+        // int txn_sent = 0;
 
         // Create TxnProcessor in next mode.
         TxnProcessor* p = new TxnProcessor(mode);
 
-        // Record start time.
-        double start = GetTime();
+        // Number of transaction requests that can be active at any given time.
+        int active_txns = (p->THREAD_COUNT) * 10;
 
         // Start specified number of txns running.
         for (int i = 0; i < active_txns; i++) {
-          p->NewTxnRequest(lg[exp]->NewTxn());
-          txn_sent++;
+          // for each thread in thread pool 
+          // Txn *txn = lg[exp]->NewTxn();
+          p->AddThreadTask(lg[exp]->NewTxn());
+          // txn_sent++;
         }
+
+        // Record start time.
+        p->Start();
+        double start = GetTime();
           
 
+
+        sleep(2);
         // Keep 100 active txns at all times for the first full second.
-        while (GetTime() < start + 1) {
-          Txn* txn = p->GetTxnResult();
-          doneTxns.push_back(txn);
-          txn_count++;
-          p->NewTxnRequest(lg[exp]->NewTxn());
-          txn_sent++;
-        }
+        // while (GetTime() < start + 1) {
+          // Txn* txn = p->GetTxnResult();
+          // doneTxns.push_back(txn);
+          // txn_count++;
+          // p->NewTxnRequest(lg[exp]->NewTxn());
+          // txn_sent++;
+        // }
 
         // Wait for all of them to finish.
-        for (int i = 0; i < active_txns; i++) {
-          Txn* txn = p->GetTxnResult();
-          doneTxns.push_back(txn);
-          txn_count++;
-          // printf("Recieved %i results out of %i requests sent\n", txn_count, txn_sent);
-          // printf("active_txns = %i", active_txns);
-        }
+        // for (int i = 0; i < active_txns; i++) {
+        //   Txn* txn = p->GetTxnResult();
+        //   doneTxns.push_back(txn);
+        //   txn_count++;
+        //   // printf("Recieved %i results out of %i requests sent\n", txn_count, txn_sent);
+        //   // printf("active_txns = %i", active_txns);
+        // }
 
         // printf("Ending benchmark");
-        p->Finish();
 
         // Record end time.
+        p->Finish();
         double end = GetTime();
+
+        bool threads_finished = false;
+        do {
+          (p->threads_done_mutex).Lock();
+          threads_finished = (p->threads_done) == p->THREAD_COUNT;
+
+          // printf("threads_done = %i\n", p->threads_done);
+
+          (p->threads_done_mutex).Unlock();
+        } while (!threads_finished);
+
+        (p->txn_count_mutex).Lock();
+        txn_count = (p->global_txn_count);
+        (p->txn_count_mutex).Unlock();
       
         throughput[round] = txn_count / (end-start);
 
-        doneTxns.clear();
+        // doneTxns.clear();
         delete p;
       }
       
@@ -162,7 +182,6 @@ int main(int argc, char** argv) {
 
   vector<LoadGen*> lg;
 
-  /* Commenting out to debug mixed read-only/read-write TODO: uncomment this block
   cout << "'Low contention' Read only (5 records)" << endl;
   lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.0001));
   lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.001));
@@ -261,7 +280,6 @@ int main(int argc, char** argv) {
   for (uint32 i = 0; i < lg.size(); i++)
     delete lg[i];
   lg.clear();
-  */
   
   // 80% of transactions are READ only transactions and run for the full
   // transaction duration. The rest are very fast (< 0.1ms), high-contention
