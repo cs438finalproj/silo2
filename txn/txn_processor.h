@@ -42,7 +42,7 @@ class TxnProcessor {
  public:
   // The TxnProcessor's constructor starts the TxnProcessor running in the
   // background.
-  explicit TxnProcessor(CCMode mode);
+  explicit TxnProcessor(CCMode mode, int thread_count);
 
   // The TxnProcessor's destructor stops all background threads and deallocates
   // all objects currently owned by the TxnProcessor, except for Txn objects.

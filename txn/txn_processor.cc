@@ -20,11 +20,11 @@ int reqs = 0;
 int execute = 0;
 int tasksrun = 0;
 
-TxnProcessor::TxnProcessor(CCMode mode)
-    : mode_(mode), tp_(THREAD_COUNT_), epoch_tp_(1), next_unique_id_(1) {
+TxnProcessor::TxnProcessor(CCMode mode, int thread_count)
+    : mode_(mode), tp_(thread_count), epoch_tp_(1), next_unique_id_(1) {
   E = 0;
   benchmark_complete = false;
-  THREAD_COUNT = THREAD_COUNT_;
+  THREAD_COUNT = thread_count;
   threads_done = 0;
   global_txn_count = 0;
 

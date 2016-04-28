@@ -8,6 +8,8 @@
 #include "txn/txn_types.h"
 #include "utils/testing.h"
 
+#define PRINT_CSV true
+
 
 int patient_table_size = 100;
 int request_table_size = 100;
@@ -498,7 +500,9 @@ void Benchmark(const vector<LoadGen*>& lg) {
         // int txn_sent = 0;
 
         // Create TxnProcessor in next mode.
-        TxnProcessor* p = new TxnProcessor(mode);
+
+        //TODO change threads..
+        TxnProcessor* p = new TxnProcessor(mode, 6);
 
         // Number of transaction requests that can be active at any given time.
         int active_txns = (p->THREAD_COUNT) * 10;
@@ -613,59 +617,71 @@ void BenchmarkPatientCreationWhileAdminsRun(const vector<PatientBankLoadGen*>& l
   CCMode mode = OCC;
 
   // Print out mode name.
-  cout << ModeToString(mode) << flush;
-
-  // For each experiment, run 3 times and get the average.
-  for (uint32 exp = 0; exp < lg.size(); exp++) {
-    double throughput[3];
-    for (uint32 round = 0; round < 3; round++) {
-      int txn_count = 0;
-
-      // Create TxnProcessor in next mode.
-      TxnProcessor* p = new TxnProcessor(mode);
-
-      // Number of transaction requests that can be active at any given time.
-      int active_txns = (p->THREAD_COUNT) * 20;
-
-      // Start specified number of txns running.
-      for (int i = 0; i < active_txns; ++i) {
-        // 5 admin reads/updates for every new patient created
-        for (int j = 0; j < 5; ++j) {
-          AdminReadsAndUpdatesRequests(p, lg[exp]);
-        }
-        CreateNewPatient(p, lg[exp]);
-      }
-
-      // Record start time.
-      p->Start();
-      double start = GetTime();
-        
-      sleep(2);
-
-      // Record end time.
-      p->Finish();
-      double end = GetTime();
-
-      bool threads_finished = false;
-      do {
-        (p->threads_done_mutex).Lock();
-        threads_finished = (p->threads_done) == p->THREAD_COUNT;
-        (p->threads_done_mutex).Unlock();
-      } while (!threads_finished);
-
-      (p->txn_count_mutex).Lock();
-      txn_count = (p->global_txn_count);
-      (p->txn_count_mutex).Unlock();
-    
-      throughput[round] = txn_count / (end-start);
-
-      delete p;
-    }
-    
-    // Print throughput
-    cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+  if (PRINT_CSV) {
+    cout << "PB 1" << flush;
+  }
+  else {
+    cout << ModeToString(mode) << flush;
   }
 
+  // Tests with different numbers of threads
+  // For each experiment, run 3 times and get the average.
+  for (int thread_count = 2; thread_count < 9; thread_count++) {
+    for (uint32 exp = 0; exp < lg.size(); exp++) {
+    double throughput[3];
+      for (uint32 round = 0; round < 3; round++) {
+        int txn_count = 0;
+
+        // Create TxnProcessor in next mode.
+        TxnProcessor* p = new TxnProcessor(mode, thread_count);
+
+        // Number of transaction requests that can be active at any given time.
+        int active_txns = (p->THREAD_COUNT) * 20;
+
+        // Start specified number of txns running.
+        for (int i = 0; i < active_txns; ++i) {
+          // 5 admin reads/updates for every new patient created
+          for (int j = 0; j < 5; ++j) {
+            AdminReadsAndUpdatesRequests(p, lg[exp]);
+          }
+          CreateNewPatient(p, lg[exp]);
+        }
+
+        // Record start time.
+        p->Start();
+        double start = GetTime();
+          
+        sleep(2);
+
+        // Record end time.
+        p->Finish();
+        double end = GetTime();
+
+        bool threads_finished = false;
+        do {
+          (p->threads_done_mutex).Lock();
+          threads_finished = (p->threads_done) == p->THREAD_COUNT;
+          (p->threads_done_mutex).Unlock();
+        } while (!threads_finished);
+
+        (p->txn_count_mutex).Lock();
+        txn_count = (p->global_txn_count);
+        (p->txn_count_mutex).Unlock();
+      
+        throughput[round] = txn_count / (end-start);
+
+        delete p;
+      }
+ 
+      // Print throughput
+      if (PRINT_CSV) {
+        cout << "," << (throughput[0] + throughput[1] + throughput[2]) / 3 << flush;
+      }
+      else {
+        cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+      }
+    }
+  }
   cout << endl;
 }
 
@@ -673,59 +689,71 @@ void BenchmarkRequestCreationWhileAdminsRun(const vector<PatientBankLoadGen*>& l
   CCMode mode = OCC;
 
   // Print out mode name.
-  cout << ModeToString(mode) << flush;
-
-  // For each experiment, run 3 times and get the average.
-  for (uint32 exp = 0; exp < lg.size(); exp++) {
-    double throughput[3];
-    for (uint32 round = 0; round < 3; round++) {
-      int txn_count = 0;
-
-      // Create TxnProcessor in next mode.
-      TxnProcessor* p = new TxnProcessor(mode);
-
-      // Number of transaction requests that can be active at any given time.
-      int active_txns = (p->THREAD_COUNT) * 20;
-
-      // Start specified number of txns running.
-      for (int i = 0; i < active_txns; ++i) {
-        // 5 admin reads/updates for every new request created
-        for (int j = 0; j < 5; ++j) {
-          AdminReadsAndUpdatesRequests(p, lg[exp]);
-        }
-        PatientCreatesRequest(p, lg[exp]);
-      }
-
-      // Record start time.
-      p->Start();
-      double start = GetTime();
-        
-      sleep(2);
-
-      // Record end time.
-      p->Finish();
-      double end = GetTime();
-
-      bool threads_finished = false;
-      do {
-        (p->threads_done_mutex).Lock();
-        threads_finished = (p->threads_done) == p->THREAD_COUNT;
-        (p->threads_done_mutex).Unlock();
-      } while (!threads_finished);
-
-      (p->txn_count_mutex).Lock();
-      txn_count = (p->global_txn_count);
-      (p->txn_count_mutex).Unlock();
-    
-      throughput[round] = txn_count / (end-start);
-
-      delete p;
-    }
-    
-    // Print throughput
-    cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+  if (PRINT_CSV) {
+    cout << "PB 2" << flush;
+  }
+  else {
+    cout << ModeToString(mode) << flush;
   }
 
+  // Tests with different numbers of threads
+  // For each experiment, run 3 times and get the average.
+  for (int thread_count = 2; thread_count < 9; thread_count++) {
+    for (uint32 exp = 0; exp < lg.size(); exp++) {
+      double throughput[3];
+      for (uint32 round = 0; round < 3; round++) {
+        int txn_count = 0;
+
+        // Create TxnProcessor in next mode.
+        TxnProcessor* p = new TxnProcessor(mode, thread_count);
+
+        // Number of transaction requests that can be active at any given time.
+        int active_txns = (p->THREAD_COUNT) * 20;
+
+        // Start specified number of txns running.
+        for (int i = 0; i < active_txns; ++i) {
+          // 5 admin reads/updates for every new request created
+          for (int j = 0; j < 5; ++j) {
+            AdminReadsAndUpdatesRequests(p, lg[exp]);
+          }
+          PatientCreatesRequest(p, lg[exp]);
+        }
+
+        // Record start time.
+        p->Start();
+        double start = GetTime();
+          
+        sleep(2);
+
+        // Record end time.
+        p->Finish();
+        double end = GetTime();
+
+        bool threads_finished = false;
+        do {
+          (p->threads_done_mutex).Lock();
+          threads_finished = (p->threads_done) == p->THREAD_COUNT;
+          (p->threads_done_mutex).Unlock();
+        } while (!threads_finished);
+
+        (p->txn_count_mutex).Lock();
+        txn_count = (p->global_txn_count);
+        (p->txn_count_mutex).Unlock();
+      
+        throughput[round] = txn_count / (end-start);
+
+        delete p;
+      }
+ 
+      // Print throughput
+      if (PRINT_CSV) {
+        cout << "," << (throughput[0] + throughput[1] + throughput[2]) / 3 << flush;
+      }
+      else {
+        cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+      }
+    }
+  }
   cout << endl;
 }
 
@@ -734,59 +762,71 @@ void BenchmarkAdminsAndPatientsTouchDocs(const vector<PatientBankLoadGen*>& lg) 
   CCMode mode = OCC;
 
   // Print out mode name.
-  cout << ModeToString(mode) << flush;
-
-  // For each experiment, run 3 times and get the average.
-  for (uint32 exp = 0; exp < lg.size(); exp++) {
-    double throughput[3];
-    for (uint32 round = 0; round < 3; round++) {
-      int txn_count = 0;
-
-      // Create TxnProcessor in next mode.
-      TxnProcessor* p = new TxnProcessor(mode);
-
-      // Number of transaction requests that can be active at any given time.
-      int active_txns = (p->THREAD_COUNT) * 20;
-
-      // Start specified number of txns running.
-      for (int i = 0; i < active_txns; ++i) {
-        // 3 admin reads/updates for every 1 patient read
-        for (int j = 0; j < 3; ++j) {
-          AdminReadsAndUpdatesDocs(p, lg[exp]);
-        }
-        PatientReadsDocs(p, lg[exp]);
-      }
-
-      // Record start time.
-      p->Start();
-      double start = GetTime();
-        
-      sleep(2);
-
-      // Record end time.
-      p->Finish();
-      double end = GetTime();
-
-      bool threads_finished = false;
-      do {
-        (p->threads_done_mutex).Lock();
-        threads_finished = (p->threads_done) == p->THREAD_COUNT;
-        (p->threads_done_mutex).Unlock();
-      } while (!threads_finished);
-
-      (p->txn_count_mutex).Lock();
-      txn_count = (p->global_txn_count);
-      (p->txn_count_mutex).Unlock();
-    
-      throughput[round] = txn_count / (end-start);
-
-      delete p;
-    }
-    
-    // Print throughput
-    cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+  if (PRINT_CSV) {
+    cout << "PB 3" << flush;
+  }
+  else {
+    cout << ModeToString(mode) << flush;
   }
 
+  // Tests with different numbers of threads
+  // For each experiment, run 3 times and get the average.
+  for (int thread_count = 2; thread_count < 9; thread_count++) {
+    for (uint32 exp = 0; exp < lg.size(); exp++) {
+      double throughput[3];
+      for (uint32 round = 0; round < 3; round++) {
+        int txn_count = 0;
+
+        // Create TxnProcessor in next mode.
+        TxnProcessor* p = new TxnProcessor(mode, thread_count);
+
+        // Number of transaction requests that can be active at any given time.
+        int active_txns = (p->THREAD_COUNT) * 20;
+
+        // Start specified number of txns running.
+        for (int i = 0; i < active_txns; ++i) {
+          // 3 admin reads/updates for every 1 patient read
+          for (int j = 0; j < 3; ++j) {
+            AdminReadsAndUpdatesDocs(p, lg[exp]);
+          }
+          PatientReadsDocs(p, lg[exp]);
+        }
+
+        // Record start time.
+        p->Start();
+        double start = GetTime();
+          
+        sleep(2);
+
+        // Record end time.
+        p->Finish();
+        double end = GetTime();
+
+        bool threads_finished = false;
+        do {
+          (p->threads_done_mutex).Lock();
+          threads_finished = (p->threads_done) == p->THREAD_COUNT;
+          (p->threads_done_mutex).Unlock();
+        } while (!threads_finished);
+
+        (p->txn_count_mutex).Lock();
+        txn_count = (p->global_txn_count);
+        (p->txn_count_mutex).Unlock();
+      
+        throughput[round] = txn_count / (end-start);
+
+        delete p;
+      }
+ 
+      // Print throughput
+      if (PRINT_CSV) {
+        cout << "," << (throughput[0] + throughput[1] + throughput[2]) / 3 << flush;
+      }
+      else {
+        cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+      }
+    }
+  }
   cout << endl;
 }
 
@@ -794,70 +834,83 @@ void BenchmarkFullSimulation(const vector<PatientBankLoadGen*>& lg) {
   CCMode mode = OCC;
 
   // Print out mode name.
-  cout << ModeToString(mode) << flush;
-
-  // For each experiment, run 3 times and get the average.
-  for (uint32 exp = 0; exp < lg.size(); exp++) {
-    double throughput[3];
-    for (uint32 round = 0; round < 3; round++) {
-      int txn_count = 0;
-
-      // Create TxnProcessor in next mode.
-      TxnProcessor* p = new TxnProcessor(mode);
-
-      // Number of transaction requests that can be active at any given time.
-      int active_txns = (p->THREAD_COUNT) * 20;
-
-      // Start specified number of txns running.
-      for (int i = 0; i < active_txns; ++i) {
-        // 4 admin reads/updates for every 1 anything else
-        for (int j = 0; j < 3; ++j) {
-          AdminReadsAndUpdatesRequests(p, lg[exp]);
-          AdminReadsAndUpdatesDocs(p, lg[exp]);
-        }
-        CreateNewPatient(p, lg[exp]);
-        ProviderReadsAndUpdatesRequests(p, lg[exp]);
-        PatientCreatesRequest(p, lg[exp]);
-        PatientReadsDocs(p, lg[exp]);
-      }
-
-      // Record start time.
-      p->Start();
-      double start = GetTime();
-        
-      sleep(2);
-
-      // Record end time.
-      p->Finish();
-      double end = GetTime();
-
-      bool threads_finished = false;
-      do {
-        (p->threads_done_mutex).Lock();
-        threads_finished = (p->threads_done) == p->THREAD_COUNT;
-        (p->threads_done_mutex).Unlock();
-      } while (!threads_finished);
-
-      (p->txn_count_mutex).Lock();
-      txn_count = (p->global_txn_count);
-      (p->txn_count_mutex).Unlock();
-    
-      throughput[round] = txn_count / (end-start);
-
-      delete p;
-    }
-    
-    // Print throughput
-    cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+  if (PRINT_CSV) {
+    cout << "PB 4" << flush;
+  }
+  else {
+    cout << ModeToString(mode) << flush;
   }
 
-    cout << endl;
+  // Tests with different numbers of threads
+  // For each experiment, run 3 times and get the average.
+  for (int thread_count = 2; thread_count < 9; thread_count++) {
+    for (uint32 exp = 0; exp < lg.size(); exp++) {
+      double throughput[3];
+      for (uint32 round = 0; round < 3; round++) {
+        int txn_count = 0;
+
+        // Create TxnProcessor in next mode.
+        TxnProcessor* p = new TxnProcessor(mode, thread_count);
+
+        // Number of transaction requests that can be active at any given time.
+        int active_txns = (p->THREAD_COUNT) * 20;
+
+        // Start specified number of txns running.
+        for (int i = 0; i < active_txns; ++i) {
+          // 4 admin reads/updates for every 1 anything else
+          for (int j = 0; j < 3; ++j) {
+            AdminReadsAndUpdatesRequests(p, lg[exp]);
+            AdminReadsAndUpdatesDocs(p, lg[exp]);
+          }
+          CreateNewPatient(p, lg[exp]);
+          ProviderReadsAndUpdatesRequests(p, lg[exp]);
+          PatientCreatesRequest(p, lg[exp]);
+          PatientReadsDocs(p, lg[exp]);
+        }
+
+        // Record start time.
+        p->Start();
+        double start = GetTime();
+          
+        sleep(2);
+
+        // Record end time.
+        p->Finish();
+        double end = GetTime();
+
+        bool threads_finished = false;
+        do {
+          (p->threads_done_mutex).Lock();
+          threads_finished = (p->threads_done) == p->THREAD_COUNT;
+          (p->threads_done_mutex).Unlock();
+        } while (!threads_finished);
+
+        (p->txn_count_mutex).Lock();
+        txn_count = (p->global_txn_count);
+        (p->txn_count_mutex).Unlock();
+      
+        throughput[round] = txn_count / (end-start);
+
+        delete p;
+      }
+ 
+      // Print throughput
+      if (PRINT_CSV) {
+        cout << "," << (throughput[0] + throughput[1] + throughput[2]) / 3 << flush;
+      }
+      else {
+            cout << "\t" << (throughput[0] + throughput[1] + throughput[2]) / 3 << "\t" << flush;
+      }
+    }
+  }
+  cout << endl;
 }
 
 int main(int argc, char** argv) {
-  cout << "\t\t\t    Average Transaction Duration" << endl;
-  cout << "\t\t0.1ms\t\t1ms\t\t10ms";
-  cout << endl;
+  // Don't need this anymore
+  // cout << "\t\t\t    Average Transaction Duration" << endl;
+  // cout << "\t\t0.1ms\t\t1ms\t\t10ms";
+  // cout << endl;
 
   cpu_set_t cs;
   CPU_ZERO(&cs);
@@ -872,9 +925,11 @@ int main(int argc, char** argv) {
 
   vector<PatientBankLoadGen*> pblg;
 
-  cout << "^^ ignore above transaction durations, customized benchmarks follow..." << endl;
+  // cout << "^^ ignore above transaction durations, customized benchmarks follow..." << endl;
 
-  cout << "PatientBank Benchmark 1: create new patients while admin reads patients & update requests" << endl;
+  if (!PRINT_CSV) {
+      cout << "PatientBank Benchmark 1: create new patients while admin reads patients & update requests" << endl;
+  }
   pblg.push_back(new PatientBankLoadGen());
 
   BenchmarkPatientCreationWhileAdminsRun(pblg);
@@ -884,7 +939,9 @@ int main(int argc, char** argv) {
   pblg.clear();
 
 
-  cout << "PatientBank Benchmark 2: patient creates requests while admin reads patients & updates requests" << endl;
+  if (!PRINT_CSV) {
+    cout << "PatientBank Benchmark 2: patient creates requests while admin reads patients & updates requests" << endl;
+  }
   pblg.push_back(new PatientBankLoadGen());
 
   BenchmarkRequestCreationWhileAdminsRun(pblg);
@@ -893,8 +950,9 @@ int main(int argc, char** argv) {
     delete pblg[i];
   pblg.clear();
 
-
-  cout << "PatientBank Benchmark 3: admin reads & updates docs while patient reads docs" << endl;
+  if (!PRINT_CSV) {
+    cout << "PatientBank Benchmark 3: admin reads & updates docs while patient reads docs" << endl;
+  }
   pblg.push_back(new PatientBankLoadGen());
 
   BenchmarkAdminsAndPatientsTouchDocs(pblg);
@@ -903,8 +961,9 @@ int main(int argc, char** argv) {
     delete pblg[i];
   pblg.clear();
 
-
-  cout << "PatientBank Benchmark 4: full simulation" << endl;
+  if (!PRINT_CSV) {
+    cout << "PatientBank Benchmark 4: full simulation" << endl;
+  }
   pblg.push_back(new PatientBankLoadGen());
 
   BenchmarkFullSimulation(pblg);
